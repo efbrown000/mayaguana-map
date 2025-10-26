@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mayaguana — Infrastructure Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    #map { width: 100%; height: 100%; }
+
+    :root{
+      --c-infra:#2E86DE;      /* blue */
+      --c-housing:#10ac84;    /* green */
+      --c-agri:#8B5E3C;       /* brown for Agriculture */
+      --c-tourism:#f39c12;    /* orange for Blue Economy Tourism */
+      --c-culture:#8E8E7E;    /* neutral gray */
+      --shadow:0 6px 18px rgba(0,0,0,0.15);
+      --border:#e5e7eb;
+      --muted:#475569;
+      --panel-bg:rgba(255,255,255,0.98);
+    }
+
+    /* Popup styling */
+    .popup-large .leaflet-popup-content-wrapper{padding:0;border-radius:12px;}
+    .popup-large .leaflet-popup-content{margin:0;}
+    figure{margin:0;}
+    figure img{display:block;max-width:90vw;max-height:80vh;width:auto;height:auto;object-fit:contain;border-top-left-radius:12px;border-top-right-radius:12px;}
+    figure figcaption{padding:10px 12px;font-weight:600;font-size:14px;background:#fff;border-bottom-left-radius:12px;border-bottom-right-radius:12px;}
+
+    /* Tooltip labels by category */
+    .label-tooltip{color:#fff;padding:2px 6px;border-radius:4px;font-size:12px;border:1px solid rgba(255,255,255,0.15);text-shadow:0 1px 1px rgba(0,0,0,0.35);}
+    .label-infra{background:var(--c-infra);}
+    .label-housing{background:var(--c-housing);}
+    .label-agri{background:var(--c-agri);}
+    .label-tourism{background:var(--c-tourism);color:#111;border-color:rgba(0,0,0,0.15);text-shadow:none;}
+    .label-culture{background:var(--c-culture);}
+
+    /* Top-center island header */
+    .island-header{
+      position:absolute; top:10px; left:50%; transform:translateX(-50%);
+      z-index:650; background:var(--panel-bg); border:1px solid var(--border);
+      border-radius:14px; padding:10px 16px; text-align:center; box-shadow:var(--shadow);
+      max-width: min(95vw, 720px);
+    }
+    .island-header h1{ margin:0; font-size:18px; font-weight:800; }
+    .island-header .meta{ margin-top:4px; font-size:13px; color:#334155; }
+    .island-header .note{ margin-top:6px; font-size:12px; color:#475569; line-height:1.35; }
+
+    /* Category Pages launcher (TOP RIGHT) */
+    .cat-launcher{
+      position:absolute; top:10px; right:10px; z-index:600;
+      background:var(--panel-bg); border-radius:12px; padding:8px;
+      box-shadow:var(--shadow); display:grid; gap:6px; border:1px solid var(--border);
+    }
+    .cat-launcher button{
+      border:1px solid var(--border); border-radius:10px; padding:8px 10px;
+      cursor:pointer; font-weight:600; font-size:13px; background:#fff;
+    }
+    .btn-infra{color:var(--c-infra);}
+    .btn-housing{color:var(--c-housing);}
+    .btn-agri{color:var(--c-agri);}
+    .btn-tourism{color:var(--c-tourism);}
+    .btn-culture{color:var(--c-culture);}
+
+    /* LEFT panel: letters list ONLY */
+    .legend-panel{
+      position:absolute; left:10px; top:50%; transform:translateY(-50%);
+      z-index:600; width:260px; max-height:70vh; overflow:auto;
+      background:var(--panel-bg); border:1px solid var(--border);
+      border-radius:14px; box-shadow:var(--shadow); padding:10px 12px;
+    }
+    .letter-list{display:grid; grid-template-columns:1fr; gap:6px;}
+    .letter-row{
+      display:flex; align-items:center; gap:8px; border:1px solid #f1f5f9;
+      padding:6px 8px; border-radius:10px; font-size:13px; background:#fff;
+    }
+    .letter-badge{
+      width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+      font-weight:800; font-size:12px; color:#fff; flex:0 0 20px; box-shadow:0 1px 2px rgba(0,0,0,0.25);
+    }
+    .badge-infra{background:var(--c-infra);}
+    .badge-housing{background:var(--c-housing);}
+    .badge-agri{background:var(--c-agri);}
+    .badge-tourism{background:var(--c-tourism); color:#111;}
+    .badge-culture{background:var(--c-culture);}
+
+    /* On-map letter badges */
+    .map-letter-badge{background:#111;color:#fff;width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;border:2px solid #fff;box-shadow:0 1px 2px rgba(0,0,0,0.35);}
+    .map-letter-badge.infra{background:var(--c-infra);}
+    .map-letter-badge.housing{background:var(--c-housing);}
+    .map-letter-badge.agri{background:var(--c-agri);}
+    .map-letter-badge.tourism{background:var(--c-tourism); color:#111;}
+    .map-letter-badge.culture{background:var(--c-culture);}
+
+    /* Category screen layout */
+    .screen{position:absolute; inset:0; background:#fff; z-index:700; display:none; overflow:auto;}
+    .screen.visible{display:block;}
+    .screen-wrap{max-width:900px; margin:24px auto; padding:0 16px 32px;}
+    .screen header{position:sticky; top:0; background:#fff; padding:12px 0 10px; z-index:10; border-bottom:1px solid #eef2f7; display:flex; justify-content:space-between; align-items:center; gap:12px;}
+    .screen-title{font-size:22px; font-weight:800; margin:0;}
+    .screen .back{border:1px solid var(--border); background:#fff; border-radius:10px; padding:8px 12px; font-weight:600; cursor:pointer;}
+    .intro{color:var(--muted); margin:10px 0 16px;}
+    .grid{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+    @media(max-width:900px){.grid{grid-template-columns:1fr;}}
+    .card{border:1px solid #eef2f7; border-radius:12px; padding:12px; background:#fff; box-shadow:0 2px 6px rgba(0,0,0,0.04);}
+    .list{list-style:none; margin:0; padding:0;}
+    .list li{display:flex; align-items:center; gap:10px; padding:10px; border-radius:10px; cursor:pointer; border:1px solid #f1f5f9; margin-bottom:8px;}
+    .list li:hover{background:#f8fafc;}
+    .dot{width:10px; height:10px; border-radius:50%; border:1px solid rgba(0,0,0,0.15);}
+    .dot.infra{background:var(--c-infra);}
+    .dot.housing{background:var(--c-housing);}
+    .dot.agri{background:var(--c-agri);}
+    .dot.tourism{background:var(--c-tourism);}
+    .dot.culture{background:var(--c-culture);}
+    .item-name{font-weight:700;}
+    .item-sub{color:#6b7280; font-size:12px;}
+    .section-title{margin:0 0 8px; font-size:16px; font-weight:800;}
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- Top-center header -->
+  <div class="island-header" role="region" aria-label="Island overview">
+    <h1>Mayaguana, Bahamas</h1>
+    <div class="meta">Population density: <strong>0.71 people/km²</strong> • Area: <strong>280 km²</strong></div>
+    <div class="note">
+      At the far southeastern edge of The Bahamas near key Atlantic–Caribbean shipping routes and the Turks &amp; Caicos,
+      Mayaguana occupies a strategic position. During the Cold War era, parts of the archipelago—including sites on and near
+      Mayaguana—supported U.S. Navy and allied range, communications, and maritime monitoring activities due to this location.
+    </div>
+  </div>
+
+  <!-- Category Pages launcher (TOP RIGHT) -->
+  <div class="cat-launcher" aria-label="Category Pages">
+    <button class="btn-infra" data-open="infra">Infrastructure Page</button>
+    <button class="btn-housing" data-open="housing">Housing Page</button>
+    <button class="btn-agri" data-open="agri">Agriculture Page</button>
+    <button class="btn-tourism" data-open="tourism">Blue Economy Tourism Page</button>
+    <button class="btn-culture" data-open="culture">Cultural & Historic Page</button>
+  </div>
+
+  <!-- LEFT panel: letter list only -->
+  <aside id="legend-panel" class="legend-panel" aria-label="Locations list">
+    <div id="letters-list" class="letter-list"></div>
+  </aside>
+
+  <!-- Category Screens -->
+  <div id="screen-infra" class="screen" role="dialog" aria-modal="true" aria-labelledby="title-infra">
+    <div class="screen-wrap">
+      <header>
+        <h1 id="title-infra" class="screen-title" style="color:var(--c-infra)">Infrastructure</h1>
+        <button class="back" data-close>Back to Map</button>
+      </header>
+      <p class="intro">Add notes, photos, and links for airports, ports, water and power here.</p>
+      <div class="grid">
+        <div class="card">
+          <h3 class="section-title">Places</h3>
+          <ul class="list" data-list="infra"></ul>
+        </div>
+        <div class="card">
+          <h3 class="section-title">About Infrastructure</h3>
+          <p>Edit this text to include project plans, timelines, contractors, budgets, or technical specs.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen-housing" class="screen" role="dialog" aria-modal="true" aria-labelledby="title-housing">
+    <div class="screen-wrap">
+      <header>
+        <h1 id="title-housing" class="screen-title" style="color:var(--c-housing)">Housing</h1>
+        <button class="back" data-close>Back to Map</button>
+      </header>
+      <p class="intro">Document community housing, villas, and local services.</p>
+      <div class="grid">
+        <div class="card">
+          <h3 class="section-title">Places</h3>
+          <ul class="list" data-list="housing"></ul>
+        </div>
+        <div class="card">
+          <h3 class="section-title">About Housing</h3>
+          <p>Use this space for zoning notes, service access, and development planning.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen-agri" class="screen" role="dialog" aria-modal="true" aria-labelledby="title-agri">
+    <div class="screen-wrap">
+      <header>
+        <h1 id="title-agri" class="screen-title" style="color:var(--c-agri)">Agriculture</h1>
+        <button class="back" data-close>Back to Map</button>
+      </header>
+      <p class="intro">Notes on crop plans, supply chains, and agricultural initiatives.</p>
+      <div class="grid">
+        <div class="card">
+          <h3 class="section-title">Places</h3>
+          <ul class="list" data-list="agri"></ul>
+        </div>
+        <div class="card">
+          <h3 class="section-title">About Agriculture</h3>
+          <p>Include irrigation, greenhouse operations, and logistics.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen-tourism" class="screen" role="dialog" aria-modal="true" aria-labelledby="title-tourism">
+    <div class="screen-wrap">
+      <header>
+        <h1 id="title-tourism" class="screen-title" style="color:var(--c-tourism)">Blue Economy Tourism</h1>
+        <button class="back" data-close>Back to Map</button>
+      </header>
+      <p class="intro">Attractions, visitor access, and sustainable marine-based recreation.</p>
+      <div class="grid">
+        <div class="card">
+          <h3 class="section-title">Places</h3>
+          <ul class="list" data-list="tourism"></ul>
+        </div>
+        <div class="card">
+          <h3 class="section-title">About Blue Economy Tourism</h3>
+          <p>Include capacity, conservation measures, and operations planning.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen-culture" class="screen" role="dialog" aria-modal="true" aria-labelledby="title-culture">
+    <div class="screen-wrap">
+      <header>
+        <h1 id="title-culture" class="screen-title" style="color:var(--c-culture)">Cultural & Historic</h1>
+        <button class="back" data-close>Back to Map</button>
+      </header>
+      <p class="intro">Historical background, preservation status, and visitor information.</p>
+      <div class="grid">
+        <div class="card">
+          <h3 class="section-title">Places</h3>
+          <ul class="list" data-list="culture"></ul>
+        </div>
+        <div class="card">
+          <h3 class="section-title">About Cultural & Historic</h3>
+          <p>Include archival references, restoration updates, and community programming.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaflet -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const MAYAGUANA_CENTER = [22.3842, -72.9539];
+
+    // ---- Coordinates ----
+    const AIRPORT_LATLNG     = [22.379925, -73.013187];
+    const DATACENTER_LATLNG  = [22.367563, -73.073901];
+    const ENERGYFARM_LATLNG  = [22.378755, -73.034925];
+    const PORT_LATLNG        = [22.336900, -73.061626];
+    const DESAL_LATLNG       = [22.346655, -73.074751];
+
+    const BOARDWALK_LATLNG   = [22.429441, -73.027406];
+    const HOUSE_LATLNG       = [22.424458, -73.023890];
+    const GREENHOUSE_LATLNG  = [22.387838, -72.985685];
+    const TANKER_LATLNG      = [22.326652, -73.052912];
+    const VILLAS_LATLNG      = [22.285488, -72.781908];
+    const MARKET_LATLNG      = [22.411772, -72.995810];
+    const OBSERVATORY_LATLNG = [22.336954, -72.732040];
+    const SKYGLIDE_LATLNG    = [22.345861, -72.814492];
+    const COASTER_LATLNG     = [22.369979, -72.857677];
+    const KAYAKING_LATLNG    = [22.417440, -72.976662];
+    const PIRATESWELL_LATLNG = [22.432702, -73.102413];
+
+    // New points
+    const BIT_LATLNG         = [22.395823, -73.07963];
+    const BOUTIQUE_LATLNG    = [22.387415, -73.086125];
+    const SEMI_LATLNG        = [22.395422, -73.077898];
+    const GAZEBO_LATLNG      = [22.400226, -73.098249];
+
+    // ---- Image URLs ----
+    const base = "https://raw.githubusercontent.com/efbrown000/mayaguana-assets/main/";
+    const airportImageURL     = base + "mayaguana-airport.jpg";
+    const dataCenterImageURL  = base + "dataCenter.jpg";
+    const energyFarmImageURL  = base + "energyFarm.jpg";
+    const portImageURL        = base + "port2.jpg";
+    const desalImageURL       = base + "desal.png";
+    const boardwalkImageURL   = base + "boardwalk.png";
+    const houseImageURL       = base + "house.png";
+    const greenhouseImageURL  = base + "greenhouse.png";
+    const tankerImageURL      = base + "tanker.png";
+    const villasImageURL      = base + "villas.png";
+    const marketImageURL      = base + "market.png";
+    const observatoryImageURL = base + "observatory.png";
+    const skyglideImageURL    = base + "Island%20SkyGlide.png";
+    const coasterImageURL     = base + "coaster.png";
+    const kayakingImageURL    = base + "kayaking.png";
+    const piratesWellImageURL = base + "Pirates%20Well.png";
+
+    // New images
+    const bitImageURL         = base + "BIT.png";
+    const boutiqueImageURL    = base + "boutique.png";
+    const semiImageURL        = base + "semiconductor.png";
+    const gazeboImageURL      = base + "gazebo.png";
+
+    // ---- Map ----
+    const map = L.map('map', { minZoom: 8, maxZoom: 19 }).setView(MAYAGUANA_CENTER, 12);
+    L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      { attribution: 'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics', maxZoom: 19 }
+    ).addTo(map);
+    L.control.scale({ metric: true, imperial: false, position: 'bottomright' }).addTo(map);
+
+    // ---- Marker icons ----
+    const markerShadow='https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-shadow.png';
+    const makeIcon=color=>new L.Icon({
+      iconUrl:`https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${color}.png`,
+      shadowUrl:markerShadow, iconSize:[25,41], iconAnchor:[12,41], popupAnchor:[1,-34], shadowSize:[41,41]
+    });
+    const IconBlue=makeIcon('blue'), IconGreen=makeIcon('green'), IconOrange=makeIcon('orange'), IconGrey=makeIcon('grey');
+
+    // ---- Helpers ----
+    function popupHTML(img,label){
+      return `<figure><img src="${img}" alt="${label}"><figcaption>${label}</figcaption></figure>`;
+    }
+
+    // Layer groups
+    const infra = L.layerGroup().addTo(map);
+    const housing = L.layerGroup().addTo(map);
+    const agri = L.layerGroup().addTo(map);
+    const tourism = L.layerGroup().addTo(map);
+    const culture = L.layerGroup().addTo(map);
+
+    const tracked = [];
+    const LABELS_ON_ZOOM = 13;
+
+    function addMarker(latlng,name,detail,img,group,labelClass,icon){
+      const m = L.marker(latlng,{icon}).bindPopup(popupHTML(img,name),{className:'popup-large',maxWidth:'auto'});
+      const labelText = detail ? `${name} — ${detail}` : name;
+      m.bindTooltip(labelText,{direction:'top',offset:[0,-10],className:`label-tooltip ${labelClass}`,permanent:false});
+      m.addTo(group); tracked.push(m); return m;
+    }
+
+    function addLetter(latlng,letter,cls,group){
+      L.marker(latlng,{
+        icon:L.divIcon({className:`map-letter-badge ${cls}`,html:`<div>${letter}</div>`,iconSize:[16,16],iconAnchor:[20,42]}),
+        interactive:false
+      }).addTo(group);
+    }
+
+    function updateLabelPermanence(){
+      const permanent = map.getZoom() >= LABELS_ON_ZOOM;
+      tracked.forEach(m=>{
+        const tt = m.getTooltip(); if(!tt) return;
+        const content = tt.getContent();
+        const classes = tt.options.className;
+        m.unbindTooltip();
+        m.bindTooltip(content,{direction:'top',offset:[0,-10],className:classes,permanent});
+      });
+    }
+    map.on('zoomend', updateLabelPermanence);
+
+    // ---- Points ----
+    const pts = [
+      // Infrastructure
+      {key:'airport', name:'Mayaguana Airport',     cat:'infra',    icon:IconBlue,    latlng:AIRPORT_LATLNG,    img:airportImageURL,    label:'label-infra',    group:infra},
+      {key:'dc',      name:'Data Center',           cat:'infra',    icon:IconBlue,    latlng:DATACENTER_LATLNG, img:dataCenterImageURL, label:'label-infra',    group:infra},
+      {key:'energy',  name:'Energy Farm',           cat:'infra',    icon:IconBlue,    latlng:ENERGYFARM_LATLNG, img:energyFarmImageURL, label:'label-infra',    group:infra},
+      {key:'port',    name:'Port',                  cat:'infra',    icon:IconBlue,    latlng:PORT_LATLNG,       img:portImageURL,       label:'label-infra',    group:infra},
+      {key:'desal',   name:'Desalination Plant',    cat:'infra',    icon:IconBlue,    latlng:DESAL_LATLNG,      img:desalImageURL,      label:'label-infra',    group:infra},
+      {key:'tanker',  name:'Offshore LNG Tanker',   cat:'infra',    icon:IconBlue,    latlng:TANKER_LATLNG,     img:tankerImageURL,     label:'label-infra',    group:infra},
+      {key:'bit',     name:'BIT Facility',          cat:'infra',    icon:IconBlue,    latlng:BIT_LATLNG,        img:bitImageURL,        label:'label-infra',    group:infra},
+      {key:'boutique',name:'Boutique Tech',         cat:'infra',    icon:IconBlue,    latlng:BOUTIQUE_LATLNG,   img:boutiqueImageURL,   label:'label-infra',    group:infra},
+      {key:'semi',    name:'Semiconductor Site',    cat:'infra',    icon:IconBlue,    latlng:SEMI_LATLNG,       img:semiImageURL,       label:'label-infra',    group:infra},
+
+      // Housing
+      {key:'houses',  name:'Houses',                cat:'housing',  icon:IconGreen,   latlng:HOUSE_LATLNG,      img:houseImageURL,      label:'label-housing',  group:housing},
+      {key:'villas',  name:'Villas',                cat:'housing',  icon:IconGreen,   latlng:VILLAS_LATLNG,     img:villasImageURL,     label:'label-housing',  group:housing},
+      {key:'market',  name:'Market',                cat:'housing',  icon:IconGreen,   latlng:MARKET_LATLNG,     img:marketImageURL,     label:'label-housing',  group:housing},
+
+      // Agriculture (only greenhouses)
+      {key:'green',   name:'Greenhouses',           cat:'agri',     icon:IconGreen,   latlng:GREENHOUSE_LATLNG, img:greenhouseImageURL, label:'label-agri',     group:agri},
+
+      // Blue Economy Tourism
+      {key:'board',   name:'Boardwalk',             cat:'tourism',  icon:IconOrange,  latlng:BOARDWALK_LATLNG,  img:boardwalkImageURL,  label:'label-tourism',  group:tourism},
+      {key:'sky',     name:'Island SkyGlide',       cat:'tourism',  icon:IconOrange,  latlng:SKYGLIDE_LATLNG,   img:skyglideImageURL,   label:'label-tourism',  group:tourism},
+      {key:'coaster', name:'Coaster',               cat:'tourism',  icon:IconOrange,  latlng:COASTER_LATLNG,    img:coasterImageURL,    label:'label-tourism',  group:tourism},
+      {key:'kayak',   name:'Kayaking',              cat:'tourism',  icon:IconOrange,  latlng:KAYAKING_LATLNG,   img:kayakingImageURL,   label:'label-tourism',  group:tourism},
+      {key:'obs',     name:'Observatory',           cat:'tourism',  icon:IconOrange,  latlng:OBSERVATORY_LATLNG,img:observatoryImageURL,label:'label-tourism',  group:tourism},
+
+      // Cultural & Historic
+      {key:'pirates', name:'Pirates Well',          cat:'culture',  icon:IconGrey,    latlng:PIRATESWELL_LATLNG,img:piratesWellImageURL,label:'label-culture',  group:culture},
+      {key:'gazebo',  name:'Historic Gazebo',       cat:'culture',  icon:IconGrey,    latlng:GAZEBO_LATLNG,     img:gazeboImageURL,     label:'label-culture',  group:culture}
+    ];
+
+    const letters="ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+    const list = document.getElementById('letters-list');
+    const keyToMarker = {};
+
+    pts.forEach((p,i)=>{
+      const marker = addMarker(
+        p.latlng,
+        p.name,
+        p.cat==='tourism' ? 'Blue Economy Tourism' :
+          p.cat.charAt(0).toUpperCase()+p.cat.slice(1),
+        p.img, p.group, p.label, p.icon
+      );
+      const letter = letters[i] || '?';
+      addLetter(p.latlng, letter,
+        (p.cat==='tourism'?'tourism':p.cat),
+        p.group
+      );
+      keyToMarker[p.key] = marker;
+
+      const row = document.createElement('div');
+      row.className = 'letter-row';
+      row.innerHTML = `<span class="letter-badge badge-${(p.cat==='tourism'?'tourism':p.cat)}">${letter}</span><span>${p.name}</span>`;
+      row.onclick = () => { map.flyTo(marker.getLatLng(), 15, {duration:0.8}); marker.openPopup(); };
+      list.appendChild(row);
+    });
+
+    // Initialize tooltip permanence based on current zoom
+    updateLabelPermanence();
+
+    // -------- Category pages logic (no filtering) --------
+    const screens = {
+      infra: document.getElementById('screen-infra'),
+      housing: document.getElementById('screen-housing'),
+      agri: document.getElementById('screen-agri'),
+      tourism: document.getElementById('screen-tourism'),
+      culture: document.getElementById('screen-culture')
+    };
+    const screenLists = {
+      infra: document.querySelector('[data-list="infra"]'),
+      housing: document.querySelector('[data-list="housing"]'),
+      agri: document.querySelector('[data-list="agri"]'),
+      tourism: document.querySelector('[data-list="tourism"]'),
+      culture: document.querySelector('[data-list="culture"]')
+    };
+    const categories = {
+      infra: [
+        { name:"Mayaguana Airport", sub:"Runway & access", markerKey:'airport' },
+        { name:"Data Center", sub:"Digital infrastructure", markerKey:'dc' },
+        { name:"Energy Farm", sub:"Generation site", markerKey:'energy' },
+        { name:"Port", sub:"Cargo & ferry", markerKey:'port' },
+        { name:"Desalination Plant", sub:"Water supply", markerKey:'desal' },
+        { name:"Offshore LNG Tanker", sub:"Fuel delivery", markerKey:'tanker' },
+        { name:"BIT Facility", sub:"Tech/industry", markerKey:'bit' },
+        { name:"Boutique Tech", sub:"Innovation hub", markerKey:'boutique' },
+        { name:"Semiconductor Site", sub:"Advanced manufacturing", markerKey:'semi' },
+      ],
+      housing: [
+        { name:"Houses", sub:"Residential", markerKey:'houses' },
+        { name:"Villas", sub:"Residential", markerKey:'villas' },
+        { name:"Market", sub:"Community hub", markerKey:'market' },
+      ],
+      agri: [
+        { name:"Greenhouses", sub:"Agriculture (I)", markerKey:'green' }, /* Agriculture has only I */
+      ],
+      tourism: [
+        { name:"Boardwalk", sub:"Seaside walk", markerKey:'board' },
+        { name:"Island SkyGlide", sub:"Aerial ride", markerKey:'sky' },
+        { name:"Coaster", sub:"Attraction", markerKey:'coaster' },
+        { name:"Kayaking", sub:"Water sport", markerKey:'kayak' },
+        { name:"Observatory", sub:"Stargazing", markerKey:'obs' },
+      ],
+      culture: [
+        { name:"Pirates Well", sub:"Historic site", markerKey:'pirates' },
+        { name:"Historic Gazebo", sub:"Cultural site", markerKey:'gazebo' },
+      ]
+    };
+
+    function renderList(which){
+      const ul = screenLists[which]; if(!ul) return;
+      ul.innerHTML = '';
+      categories[which].forEach(item=>{
+        const li = document.createElement('li');
+        li.innerHTML = `
+          <span class="dot ${which}"></span>
+          <span style="display:flex;flex-direction:column;">
+            <span class="item-name">${item.name}</span>
+            <span class="item-sub">${item.sub}</span>
+          </span>`;
+        li.onclick = () => {
+          const m = keyToMarker[item.markerKey];
+          if (m) { map.flyTo(m.getLatLng(), 15, {duration:0.8}); m.openPopup(); }
+          hideAllScreens();
+        };
+        ul.appendChild(li);
+      });
+    }
+
+    function showScreen(which){
+      document.getElementById('map').style.display = 'none';
+      Object.keys(screens).forEach(k=>screens[k].classList.toggle('visible', k===which));
+      renderList(which);
+    }
+    function hideAllScreens(){
+      document.getElementById('map').style.display = 'block';
+      Object.values(screens).forEach(s=>s.classList.remove('visible'));
+    }
+
+    document.querySelectorAll('.cat-launcher [data-open]').forEach(btn=>{
+      btn.addEventListener('click', ()=> showScreen(btn.getAttribute('data-open')) );
+    });
+    document.querySelectorAll('[data-close]').forEach(btn=>{
+      btn.addEventListener('click', hideAllScreens);
+    });
+  </script>
+</body>
+</html>
